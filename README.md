@@ -21,7 +21,7 @@ A lightweight, browser-based tool for memorizing ordered or unordered lists (e.g
 - **Instant Feedback**: “Check Answers” verifies correctness; “Reset” reshuffles or clears inputs.
 - **No Dependencies**: Runs in modern browsers using Tailwind CSS via CDN.
 
-## Setup
+## Setup (Local if wanted, it is available online)
 
 1. **Download**:
    - Save the `index.html` file from this repository.
@@ -138,18 +138,6 @@ Save and upload via the file input.
 - **Assigned Orders**: Unordered lists use 1, 2, 3, ... in Typing/Drag-and-Drop, which may feel arbitrary.
 - **Browser Compatibility**: Works in modern browsers; older browsers (e.g., IE) may not support Tailwind or drag-and-drop.
 
-## Contributing
-Fork this repository and submit pull requests for enhancements, such as:
-- Progress tracking for correct attempts.
-- Hint button to reveal items briefly.
-- Autocomplete for Typing/List modes.
-- Enhanced styling or React-based UI.
-
-## License
-MIT License. Use, modify, and distribute freely, with attribution.
-
-## Acknowledgments
-Built for flexible memorization, supporting both ordered and unordered lists. Powered by Tailwind CSS, JavaScript’s drag-and-drop API, and smart file format detection.
 
 ---
 Happy memorizing! For issues or feature requests, open a GitHub issue or contact the maintainer.
