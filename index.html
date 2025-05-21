@@ -1,0 +1,423 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Element Order Memorization with Tri-Mode</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen">
+  <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
+    <h1 class="text-2xl font-bold mb-4 text-center">Memorize Element List</h1>
+    <p class="text-gray-600 mb-4 text-center">Upload a .txt file or use the default list. Choose drag-and-drop, typing, or list mode.</p>
+    <div class="mb-4">
+      <label for="file-input" class="block text-sm font-medium text-gray-700 mb-1">Upload .txt file (e.g., "1. Hydrogen" or "Hydrogen")</label>
+      <input type="file" id="file-input" accept=".txt" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+    </div>
+    <div class="mb-4 flex items-center justify-center">
+      <label for="mode-select" class="text-sm font-medium text-gray-700 mr-2">Mode:</label>
+      <select id="mode-select" class="p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <option value="drag">Drag-and-Drop</option>
+        <option value="type">Typing</option>
+        <option value="list">List</option>
+      </select>
+    </div>
+    <div id="order-container" class="grid grid-cols-[48px_1fr] gap-2">
+      <div id="number-list" class="space-y-1">
+        <!-- Numbered positions for drag/typing modes -->
+      </div>
+      <div id="element-list" class="space-y-1">
+        <!-- Draggable elements or inputs for drag/typing modes -->
+      </div>
+    </div>
+    <div id="list-container" class="hidden">
+      <p id="file-name" class="text-sm font-medium text-gray-700 mb-2">Default List</p>
+      <textarea id="list-input" class="w-full h-40 p-3 rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter one item per line, in any order..."></textarea>
+    </div>
+    <div class="mt-6 flex justify-between">
+      <button id="check-btn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Check Answers</button>
+      <button id="error-analysis-btn" class="hidden bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600">Error Analysis</button>
+      <button id="reset-btn" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">Reset</button>
+    </div>
+    <p id="feedback" class="mt-4 text-center font-semibold"></p>
+  </div>
+
+  <!-- Error Analysis Overlay -->
+  <div id="error-overlay" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white p-6 rounded-lg shadow-lg max-w-lg w-full max-h-[80vh] overflow-y-auto">
+      <h2 class="text-xl font-bold mb-4 text-center">Error Analysis</h2>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <h3 class="text-lg font-semibold mb-2">Correct Items</h3>
+          <ul id="correct-list" class="space-y-1"></ul>
+        </div>
+        <div>
+          <h3 class="text-lg font-semibold mb-2">Your Answers</h3>
+          <ul id="user-list" class="space-y-1"></ul>
+        </div>
+      </div>
+      <div class="mt-6 flex justify-center">
+        <button id="close-overlay-btn" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Default list if no file is uploaded
+    const defaultElements = [
+      { name: "Hydrogen", order: 1 },
+      { name: "Helium", order: 2 },
+      { name: "Lithium", order: 3 },
+      { name: "Beryllium", order: 4 },
+      { name: "Boron", order: 5 },
+      { name: "Carbon", order: 6 },
+      { name: "Nitrogen", order: 7 },
+      { name: "Oxygen", order: 8 },
+      { name: "Fluorine", order: 9 },
+      { name: "Neon", order: 10 }
+    ];
+
+    let correctOrder = [...defaultElements];
+    let currentMode = "type"; // Default to Typing for ordered default list
+    let fileName = "Default List";
+    let isOrderedList = true; // Default list is ordered
+
+    // Fisher-Yates Shuffle for unbiased randomization
+    function shuffle(array) {
+      const newArray = [...array];
+      for (let i = newArray.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+      }
+      return newArray;
+    }
+
+    // Initialize or update the lists
+    function initList(elements = correctOrder) {
+      const numberList = document.getElementById("number-list");
+      const elementList = document.getElementById("element-list");
+      const orderContainer = document.getElementById("order-container");
+      const listContainer = document.getElementById("list-container");
+      const fileNameDisplay = document.getElementById("file-name");
+      const modeSelect = document.getElementById("mode-select");
+      numberList.innerHTML = "";
+      elementList.innerHTML = "";
+      document.getElementById("list-input").value = "";
+      document.getElementById("feedback").textContent = "";
+      document.getElementById("error-analysis-btn").classList.add("hidden");
+
+      fileNameDisplay.textContent = fileName;
+      modeSelect.value = currentMode;
+
+      if (currentMode === "list") {
+        orderContainer.classList.add("hidden");
+        listContainer.classList.remove("hidden");
+      } else {
+        orderContainer.classList.remove("hidden");
+        listContainer.classList.add("hidden");
+
+        // Populate numbered positions for drag/typing modes
+        elements.forEach(element => {
+          const div = document.createElement("div");
+          div.className = "bg-gray-100 p-3 rounded text-right text-sm flex items-center justify-end h-12";
+          div.textContent = `${element.order}.`;
+          numberList.appendChild(div);
+        });
+
+        // Populate elements or inputs
+        if (currentMode === "drag") {
+          const shuffledElements = shuffle([...elements]);
+          shuffledElements.forEach(element => {
+            const div = document.createElement("div");
+            div.className = "bg-gray-200 p-3 rounded cursor-move flex justify-between items-center h-12";
+            div.draggable = true;
+            div.dataset.order = element.order;
+            div.innerHTML = `<span>${element.name}</span>`;
+            elementList.appendChild(div);
+          });
+          addDragAndDropListeners();
+        } else if (currentMode === "type") {
+          elements.forEach(element => {
+            const div = document.createElement("div");
+            div.className = "flex items-center h-12";
+            const input = document.createElement("input");
+            input.type = "text";
+            input.className = "w-full p-3 rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 h-12";
+            input.dataset.order = element.order;
+            div.appendChild(input);
+            elementList.appendChild(div);
+          });
+        }
+      }
+    }
+
+    // Add drag and drop event listeners
+    function addDragAndDropListeners() {
+      const items = document.querySelectorAll("#element-list > div");
+      items.forEach(item => {
+        item.addEventListener("dragstart", (e) => {
+          e.dataTransfer.setData("text/plain", e.target.dataset.order);
+          e.target.classList.add("opacity-50");
+        });
+        item.addEventListener("dragend", (e) => {
+          e.target.classList.remove("opacity-50");
+        });
+        item.addEventListener("dragover", (e) => {
+          e.preventDefault();
+        });
+        item.addEventListener("drop", (e) => {
+          e.preventDefault();
+          const draggedId = e.dataTransfer.getData("text/plain");
+          const draggedItem = document.querySelector(`[data-order="${draggedId}"]`);
+          const dropTarget = e.target.closest("#element-list > div");
+          if (draggedItem && dropTarget && draggedItem !== dropTarget) {
+            const elementList = document.getElementById("element-list");
+            const items = Array.from(elementList.children);
+            const draggedIndex = items.indexOf(draggedItem);
+            const dropIndex = items.indexOf(dropTarget);
+            if (draggedIndex < dropIndex) {
+              dropTarget.after(draggedItem);
+            } else {
+              dropTarget.before(draggedItem);
+            }
+          }
+        });
+      });
+    }
+
+    // Show error analysis overlay
+    function showErrorAnalysis(userAnswers) {
+      const correctList = document.getElementById("correct-list");
+      const userList = document.getElementById("user-list");
+      correctList.innerHTML = "";
+      userList.innerHTML = "";
+
+      if (currentMode === "list") {
+        // Sort correct items for display
+        const correctItems = correctOrder.map(e => e.name.toLowerCase()).sort();
+        const userItems = userAnswers.map(item => item.toLowerCase()).sort();
+
+        // Correct list (all green)
+        correctItems.forEach((item, index) => {
+          const correctItem = document.createElement("li");
+          correctItem.className = "text-green-500 p-2";
+          correctItem.textContent = `${index + 1}. ${correctOrder.find(e => e.name.toLowerCase() === item).name}`;
+          correctList.appendChild(correctItem);
+        });
+
+        // User answers (green if in correct list, red if not)
+        userItems.forEach((item, index) => {
+          const userItem = document.createElement("li");
+          const isCorrect = correctItems.includes(item);
+          userItem.className = `p-2 ${isCorrect ? "text-green-500" : "text-red-500"}`;
+          userItem.textContent = `${index + 1}. ${item || "(empty)"}`;
+          userList.appendChild(userItem);
+        });
+
+        // Add missing items in red
+        correctItems.forEach((item, index) => {
+          if (!userItems.includes(item)) {
+            const userItem = document.createElement("li");
+            userItem.className = "p-2 text-red-500";
+            userItem.textContent = `${userItems.length + index + 1}. (missing)`;
+            userList.appendChild(userItem);
+          }
+        });
+      } else {
+        correctOrder.forEach((element, index) => {
+          // Correct list (always green)
+          const correctItem = document.createElement("li");
+          correctItem.className = "text-green-500 p-2";
+          correctItem.textContent = `${element.order}. ${element.name}`;
+          correctList.appendChild(correctItem);
+
+          // User answers (green if correct, red if incorrect)
+          const userItem = document.createElement("li");
+          const isCorrect = currentMode === "drag"
+            ? parseInt(userAnswers[index].dataset.order) === correctOrder[index].order
+            : userAnswers[index].querySelector("input").value.trim().toLowerCase() === correctOrder[index].name.toLowerCase();
+          userItem.className = `p-2 ${isCorrect ? "text-green-500" : "text-red-500"}`;
+          userItem.textContent = `${element.order}. ${
+            currentMode === "drag" ? userAnswers[index].querySelector("span").textContent : userAnswers[index].querySelector("input").value.trim() || "(empty)"
+          }`;
+          userList.appendChild(userItem);
+        });
+      }
+
+      document.getElementById("error-overlay").classList.remove("hidden");
+    }
+
+    // Check if the current answers are correct
+    function checkAnswers() {
+      const elementList = document.getElementById("element-list");
+      const listInput = document.getElementById("list-input");
+      const feedback = document.getElementById("feedback");
+      const errorAnalysisBtn = document.getElementById("error-analysis-btn");
+      let isCorrect = true;
+
+      if (currentMode === "drag") {
+        const items = Array.from(elementList.children);
+        items.forEach((item, index) => {
+          if (parseInt(item.dataset.order) !== correctOrder[index].order) {
+            isCorrect = false;
+          }
+        });
+        if (!isCorrect) {
+          errorAnalysisBtn.classList.remove("hidden");
+        }
+      } else if (currentMode === "type") {
+        const items = Array.from(elementList.children);
+        items.forEach((item, index) => {
+          const input = item.querySelector("input");
+          if (input.value.trim().toLowerCase() !== correctOrder[index].name.toLowerCase()) {
+            isCorrect = false;
+          }
+        });
+        if (!isCorrect) {
+          errorAnalysisBtn.classList.remove("hidden");
+        }
+      } else if (currentMode === "list") {
+        const userAnswers = listInput.value.split("\n").map(line => line.trim()).filter(line => line);
+        const correctItems = correctOrder.map(e => e.name.toLowerCase()).sort();
+        const userItems = userAnswers.map(item => item.toLowerCase()).sort();
+        isCorrect = userItems.length === correctItems.length && userItems.every((item, index) => item === correctItems[index]);
+        if (!isCorrect) {
+          errorAnalysisBtn.classList.remove("hidden");
+        }
+      }
+
+      feedback.textContent = isCorrect ? "Correct! Great job!" : "Incorrect. Try again!";
+      feedback.className = `mt-4 text-center font-semibold ${isCorrect ? "text-green-500" : "text-red-500"}`;
+    }
+
+    // Parse .txt file and update elements
+    function parseFile(file) {
+      fileName = file.name;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const text = e.target.result;
+        const lines = text.split("\n").map(line => line.trim()).filter(line => line);
+        const elements = [];
+        let isOrdered = true;
+
+        // Check if all lines match NUMBER. NAME format
+        lines.forEach((line, index) => {
+          const match = line.match(/^\d+\.\s*(.+)$/);
+          if (match) {
+            elements.push({ name: match[1].trim(), order: index + 1 });
+          } else {
+            isOrdered = false;
+            elements.push({ name: line.trim(), order: index + 1 });
+          }
+        });
+
+        if (elements.length > 0) {
+          correctOrder = elements;
+          isOrderedList = isOrdered;
+          currentMode = isOrdered ? "type" : "list";
+          initList(elements);
+          document.getElementById("feedback").textContent = "File loaded successfully!";
+          document.getElementById("feedback").className = "mt-4 text-center font-semibold text-green-500";
+        } else {
+          fileName = "Default List";
+          isOrderedList = true;
+          currentMode = "type";
+          document.getElementById("feedback").textContent = "Invalid file format. Use '1. Name' or 'Name' per line.";
+          document.getElementById("feedback").className = "mt-4 text-center font-semibold text-red-500";
+          initList();
+        }
+      };
+      reader.onerror = function() {
+        fileName = "Default List";
+        isOrderedList = true;
+        currentMode = "type";
+        document.getElementById("feedback").textContent = "Error reading file.";
+        document.getElementById("feedback").className = "mt-4 text-center font-semibold text-red-500";
+        initList();
+      };
+      reader.readAsText(file);
+    }
+
+    // Reset the list
+    function resetList() {
+      initList(correctOrder);
+    }
+
+    // Event listeners
+    document.getElementById("check-btn").addEventListener("click", checkAnswers);
+    document.getElementById("reset-btn").addEventListener("click", resetList);
+    document.getElementById("file-input").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (file && file.type === "text/plain") {
+        parseFile(file);
+      } else {
+        fileName = "Default List";
+        isOrderedList = true;
+        currentMode = "type";
+        document.getElementById("feedback").textContent = "Please upload a valid .txt file.";
+        document.getElementById("feedback").className = "mt-4 text-center font-semibold text-red-500";
+        initList();
+      }
+    });
+    document.getElementById("mode-select").addEventListener("change", (e) => {
+      currentMode = e.target.value;
+      initList(correctOrder);
+    });
+    document.getElementById("error-analysis-btn").addEventListener("click", () => {
+      if (currentMode === "list") {
+        const userAnswers = document.getElementById("list-input").value.split("\n").map(line => line.trim()).filter(line => line);
+        showErrorAnalysis(userAnswers);
+      } else {
+        const elementList = document.getElementById("element-list");
+        const items = Array.from(elementList.children);
+        showErrorAnalysis(items);
+      }
+    });
+    document.getElementById("close-overlay-btn").addEventListener("click", () => {
+      document.getElementById("error-overlay").classList.add("hidden");
+    });
+
+    // Initialize the app with default elements
+    initList();
+  </script>
+</body>
+</html>
